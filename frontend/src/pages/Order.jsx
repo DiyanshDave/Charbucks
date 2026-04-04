@@ -1,6 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { products } from "../data/mockData";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import Sidebar from "../components/Sidebar";
 import CategorySidebar from "../components/CategorySidebar";
@@ -11,15 +10,105 @@ export default function Order() {
   const { tableId } = useParams();
   const navigate = useNavigate();
   const [cart, setCart] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // fetch products from your backend
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const res = await fetch("http://localhost:3000/api/products");
+        const data = await res.json();
+        setProducts(data);
+      } catch (err) {
+        console.error("Failed to fetch products:", err);
+        setError("Failed to load products");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProducts();
+  }, []);
 
   const addToCart = (product) => {
-    setCart([...cart, product]);
+    // check if product already in cart
+    const existing = cart.find((item) => item.id === product.id);
+    if (existing) {
+      // increase quantity
+      setCart(
+        cart.map((item) =>
+          item.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        )
+      );
+    } else {
+      // add new item with quantity 1
+      setCart([...cart, { ...product, quantity: 1 }]);
+    }
   };
 
-  const total = cart.reduce((sum, item) => sum + item.price, 0);
+  const removeFromCart = (productId) => {
+    setCart(cart.filter((item) => item.id !== productId));
+  };
+
+  // total calculated with quantity
+  const total = cart.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0
+  );
+
+  // create order + send to kitchen
+  const handleCheckout = async () => {
+    if (cart.length === 0) {
+      alert("Cart is empty");
+      return;
+    }
+
+    try {
+      // 1. create order — using contract field names
+      const orderRes = await fetch("http://localhost:3000/api/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tableId: tableId,         // contract uses tableId not table_id
+          totalAmount: total,       // contract uses totalAmount not total_amount
+          items: cart.map((item) => ({
+            productId: item.id,     // contract uses productId not product_id
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+          })),
+        }),
+      });
+
+      const orderData = await orderRes.json();
+
+      if (!orderRes.ok) {
+        throw new Error(orderData.error || "Order creation failed");
+      }
+
+      const orderId = orderData.orderId; // contract returns orderId not order_id
+
+      // 2. send to kitchen
+      await fetch(`http://localhost:3000/api/orders/${orderId}/send`, {
+        method: "POST",
+      });
+
+      // 3. navigate to payment
+      navigate("/payment", { state: { total, orderId, tableId } });
+
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong: " + err.message);
+    }
+  };
 
   return (
-    // 🔥 THIS IS THE MAIN CONTAINER
     <div className="flex bg-surface min-h-screen">
 
       {/* LEFT NAV */}
@@ -34,7 +123,23 @@ export default function Order() {
           Table {tableId}
         </h1>
 
-        <ProductGrid products={products} addToCart={addToCart} />
+        {/* loading state */}
+        {loading && (
+          <p className="text-gray-500">Loading products...</p>
+        )}
+
+        {/* error state */}
+        {error && (
+          <p className="text-red-500">{error}</p>
+        )}
+
+        {/* products loaded */}
+        {!loading && !error && (
+          <ProductGrid
+            products={products}
+            addToCart={addToCart}
+          />
+        )}
       </div>
 
       {/* RIGHT CART PANEL */}
@@ -42,9 +147,8 @@ export default function Order() {
         <Cart
           cart={cart}
           total={total}
-          onCheckout={() =>
-            navigate("/payment", { state: { total } })
-          }
+          onCheckout={handleCheckout}
+          onRemove={removeFromCart}
         />
       </div>
 

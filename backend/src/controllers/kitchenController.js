@@ -1,52 +1,56 @@
 const pool = require('../db/pool');
 
 // GET /api/kitchen/orders
+// returns only active kitchen orders (to_cook and preparing)
 const getKitchenOrders = async (req, res) => {
   try {
-    const ordersResult = await pool.query(`
-      SELECT order_id, table_id, status, total_amount, created_at
-      FROM orders
-      WHERE status IN ('to_cook', 'preparing')
-      ORDER BY created_at ASC
+    const result = await pool.query(`
+      SELECT 
+        o.order_id,
+        o.table_id,
+        o.status,
+        o.total_amount,
+        o.created_at,
+        ft.name as table_name,
+        json_agg(
+          json_build_object(
+            'product_id', oi.product_id,
+            'name', oi.name,
+            'price', oi.price,
+            'quantity', oi.quantity
+          )
+        ) as items
+      FROM orders o
+      LEFT JOIN order_items oi ON o.order_id = oi.order_id
+      LEFT JOIN floor_tables ft ON o.table_id = ft.id
+      WHERE o.status IN ('to_cook', 'preparing')
+      GROUP BY o.order_id, ft.name
+      ORDER BY o.created_at ASC
     `);
 
-    const orders = ordersResult.rows;
-
-    const enriched = await Promise.all(orders.map(async (order) => {
-      const itemsResult = await pool.query(
-        `SELECT product_id, name, price, quantity FROM order_items WHERE order_id = $1`,
-        [order.order_id]
-      );
-      return {
-        orderId: order.order_id,
-        tableId: order.table_id,
-        status: order.status,
-        totalAmount: order.total_amount,
-        createdAt: order.created_at,
-        items: itemsResult.rows,
-      };
-    }));
-
-    res.json(enriched);
+    res.json(result.rows);
   } catch (err) {
-    console.error('getKitchenOrders error:', err);
+    console.error('Kitchen orders error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 };
 
 // PATCH /api/kitchen/orders/:id
+// chef updates status: to_cook → preparing → completed
 const updateKitchenOrderStatus = async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  const allowed = ['preparing', 'completed'];
-  if (!allowed.includes(status)) {
-    return res.status(400).json({ error: 'Kitchen can only set status to: preparing, completed' });
+  const allowedStatuses = ['preparing', 'completed'];
+  if (!allowedStatuses.includes(status)) {
+    return res.status(400).json({ 
+      error: 'Kitchen can only set status to preparing or completed' 
+    });
   }
 
   try {
     const result = await pool.query(
-      `UPDATE orders SET status = $1 WHERE order_id = $2 RETURNING order_id, status`,
+      'UPDATE orders SET status = $1 WHERE order_id = $2 RETURNING *',
       [status, id]
     );
 
@@ -55,13 +59,53 @@ const updateKitchenOrderStatus = async (req, res) => {
     }
 
     res.json({
-      orderId: result.rows[0].order_id,
-      status: result.rows[0].status,
+      message: `Order marked as ${status}`,
+      order: result.rows[0],
     });
   } catch (err) {
-    console.error('updateKitchenOrderStatus error:', err);
+    console.error('Kitchen update error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 };
 
-module.exports = { getKitchenOrders, updateKitchenOrderStatus };
+// GET /api/kitchen/orders/completed
+// recently completed orders (last 20)
+const getCompletedOrders = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        o.order_id,
+        o.table_id,
+        o.status,
+        o.total_amount,
+        o.created_at,
+        ft.name as table_name,
+        json_agg(
+          json_build_object(
+            'product_id', oi.product_id,
+            'name', oi.name,
+            'price', oi.price,
+            'quantity', oi.quantity
+          )
+        ) as items
+      FROM orders o
+      LEFT JOIN order_items oi ON o.order_id = oi.order_id
+      LEFT JOIN floor_tables ft ON o.table_id = ft.id
+      WHERE o.status = 'completed'
+      GROUP BY o.order_id, ft.name
+      ORDER BY o.created_at DESC
+      LIMIT 20
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Completed orders error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+module.exports = {
+  getKitchenOrders,
+  updateKitchenOrderStatus,
+  getCompletedOrders,
+};
