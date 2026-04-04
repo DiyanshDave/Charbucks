@@ -1,10 +1,10 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-
 import Sidebar from "../components/Sidebar";
 import CategorySidebar from "../components/CategorySidebar";
 import ProductGrid from "../components/ProductGrid";
 import Cart from "../components/Cart";
+import BASE_URL from "../config/api";
 
 export default function Order() {
   const { tableId } = useParams();
@@ -14,11 +14,10 @@ export default function Order() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // fetch products from your backend
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const res = await fetch("http://localhost:3000/api/products");
+        const res = await fetch(`${BASE_URL}/api/products`);
         const data = await res.json();
         setProducts(data);
       } catch (err) {
@@ -33,10 +32,8 @@ export default function Order() {
   }, []);
 
   const addToCart = (product) => {
-    // check if product already in cart
     const existing = cart.find((item) => item.id === product.id);
     if (existing) {
-      // increase quantity
       setCart(
         cart.map((item) =>
           item.id === product.id
@@ -45,7 +42,6 @@ export default function Order() {
         )
       );
     } else {
-      // add new item with quantity 1
       setCart([...cart, { ...product, quantity: 1 }]);
     }
   };
@@ -54,13 +50,11 @@ export default function Order() {
     setCart(cart.filter((item) => item.id !== productId));
   };
 
-  // total calculated with quantity
   const total = cart.reduce(
     (sum, item) => sum + item.price * item.quantity,
     0
   );
 
-  // create order + send to kitchen
   const handleCheckout = async () => {
     if (cart.length === 0) {
       alert("Cart is empty");
@@ -68,17 +62,14 @@ export default function Order() {
     }
 
     try {
-      // 1. create order — using contract field names
-      const orderRes = await fetch("http://localhost:3000/api/orders", {
+      const orderRes = await fetch(`${BASE_URL}/api/orders`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tableId: tableId,         // contract uses tableId not table_id
-          totalAmount: total,       // contract uses totalAmount not total_amount
+          tableId: tableId,
+          totalAmount: total,
           items: cart.map((item) => ({
-            productId: item.id,     // contract uses productId not product_id
+            productId: item.id,
             name: item.name,
             price: item.price,
             quantity: item.quantity,
@@ -92,16 +83,13 @@ export default function Order() {
         throw new Error(orderData.error || "Order creation failed");
       }
 
-      const orderId = orderData.orderId; // contract returns orderId not order_id
+      const orderId = orderData.orderId;
 
-      // 2. send to kitchen
-      await fetch(`http://localhost:3000/api/orders/${orderId}/send`, {
+      await fetch(`${BASE_URL}/api/orders/${orderId}/send`, {
         method: "POST",
       });
 
-      // 3. navigate to payment
       navigate("/payment", { state: { total, orderId, tableId } });
-
     } catch (err) {
       console.error(err);
       alert("Something went wrong: " + err.message);
@@ -110,39 +98,22 @@ export default function Order() {
 
   return (
     <div className="flex bg-surface min-h-screen">
-
-      {/* LEFT NAV */}
       <Sidebar />
-
-      {/* CATEGORY PANEL */}
       <CategorySidebar />
 
-      {/* MAIN PRODUCT AREA */}
-      <div className="flex-1 p-8 ml-64">
+      <div className="flex-1 p-8 ml-16">
         <h1 className="text-3xl font-serif text-primary mb-6">
           Table {tableId}
         </h1>
 
-        {/* loading state */}
-        {loading && (
-          <p className="text-gray-500">Loading products...</p>
-        )}
+        {loading && <p className="text-gray-500">Loading products...</p>}
+        {error && <p className="text-red-500">{error}</p>}
 
-        {/* error state */}
-        {error && (
-          <p className="text-red-500">{error}</p>
-        )}
-
-        {/* products loaded */}
         {!loading && !error && (
-          <ProductGrid
-            products={products}
-            addToCart={addToCart}
-          />
+          <ProductGrid products={products} addToCart={addToCart} />
         )}
       </div>
 
-      {/* RIGHT CART PANEL */}
       <div className="p-6">
         <Cart
           cart={cart}
@@ -151,7 +122,6 @@ export default function Order() {
           onRemove={removeFromCart}
         />
       </div>
-
     </div>
   );
 }

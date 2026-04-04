@@ -12,9 +12,16 @@ const paymentRoutes = require('./routes/payments');
 const sessionRoutes = require('./routes/sessions');
 const reportRoutes = require('./routes/reports');
 const kitchenRoutes = require('./routes/kitchen');
+
 const app = express();
 
-app.use(cors());
+// allow all origins on same network
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'PUT'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
 app.use(express.json());
 
 app.use(

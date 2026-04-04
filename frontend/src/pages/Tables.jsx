@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import Sidebar from "../components/Sidebar";
+import BASE_URL from "../config/api";
 
 export default function Tables() {
   const navigate = useNavigate();
@@ -8,11 +9,10 @@ export default function Tables() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // fetch tables from backend
   useEffect(() => {
     const fetchTables = async () => {
       try {
-        const res = await fetch("http://localhost:3000/api/tables");
+        const res = await fetch(`${BASE_URL}/api/tables`);
         const data = await res.json();
         setTables(data);
       } catch (err) {
@@ -26,14 +26,12 @@ export default function Tables() {
     fetchTables();
   }, []);
 
-  // status color
   const getStatusColor = (status) => {
     if (status === "available") return "text-green-500";
     if (status === "occupied") return "text-red-500";
     return "text-secondary";
   };
 
-  // status emoji
   const getStatusEmoji = (status) => {
     if (status === "available") return "🍽️";
     if (status === "occupied") return "🔴";
@@ -44,22 +42,14 @@ export default function Tables() {
     <div className="bg-surface min-h-screen flex">
       <Sidebar />
 
-      <div className="ml-64 p-10 w-full">
+      <div className="ml-16 p-10 w-full">
         <h1 className="text-4xl font-serif text-primary mb-10">
           Floor Overview
         </h1>
 
-        {/* loading */}
-        {loading && (
-          <p className="text-secondary">Loading tables...</p>
-        )}
+        {loading && <p className="text-secondary">Loading tables...</p>}
+        {error && <p className="text-red-500">{error}</p>}
 
-        {/* error */}
-        {error && (
-          <p className="text-red-500">{error}</p>
-        )}
-
-        {/* tables grid */}
         {!loading && !error && (
           <div className="grid grid-cols-3 gap-8">
             {tables.map((table) => (
@@ -78,36 +68,26 @@ export default function Tables() {
                     : "cursor-not-allowed opacity-60"
                   }`}
               >
-                {/* table name */}
                 <div className="text-primary font-bold text-lg">
                   {table.name}
                 </div>
-
-                {/* seats info */}
                 <div className="text-secondary text-sm mt-1">
                   {table.seats} seats
                 </div>
-
-                {/* table icon */}
                 <div className="mt-6 w-full h-40 bg-white rounded-full flex items-center justify-center text-4xl">
                   {getStatusEmoji(table.status)}
                 </div>
-
-                {/* status */}
                 <div className={`mt-4 text-sm font-semibold ${getStatusColor(table.status)}`}>
                   {table.status === "available" ? "Available" : "Occupied"}
                 </div>
-
               </div>
             ))}
           </div>
         )}
 
-        {/* empty state */}
         {!loading && !error && tables.length === 0 && (
-          <p className="text-secondary">No tables found. Add tables from the backend.</p>
+          <p className="text-secondary">No tables found.</p>
         )}
-
       </div>
     </div>
   );

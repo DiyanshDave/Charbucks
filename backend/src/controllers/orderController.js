@@ -11,13 +11,11 @@ const createOrder = async (req, res) => {
   try {
     const orderId = 'o' + Date.now();
 
-    // insert order
     await pool.query(
       'INSERT INTO orders (order_id, table_id, status, total_amount) VALUES ($1, $2, $3, $4)',
       [orderId, tableId, 'created', totalAmount]
     );
 
-    // insert order items
     for (const item of items) {
       await pool.query(
         'INSERT INTO order_items (order_id, product_id, name, price, quantity) VALUES ($1, $2, $3, $4, $5)',
@@ -25,16 +23,13 @@ const createOrder = async (req, res) => {
       );
     }
 
-    // mark table as occupied
+    // mark table occupied
     await pool.query(
       'UPDATE floor_tables SET status = $1 WHERE id = $2',
       ['occupied', tableId]
     );
 
-    res.status(201).json({
-      orderId,
-      status: 'created',
-    });
+    res.status(201).json({ orderId, status: 'created' });
   } catch (err) {
     console.error('Create order error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -50,7 +45,6 @@ const getAllOrders = async (req, res) => {
 
     const orders = ordersResult.rows;
 
-    // attach items to each order
     for (const order of orders) {
       const itemsResult = await pool.query(
         'SELECT * FROM order_items WHERE order_id = $1',
@@ -66,7 +60,7 @@ const getAllOrders = async (req, res) => {
   }
 };
 
-// POST /api/orders/:id/send  — send to kitchen
+// POST /api/orders/:id/send — send to kitchen
 const sendToKitchen = async (req, res) => {
   const { id } = req.params;
 
@@ -80,27 +74,46 @@ const sendToKitchen = async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    res.json({
-      message: 'Order sent to kitchen',
-      status: 'to_cook',
-    });
+    res.json({ message: 'Order sent to kitchen', status: 'to_cook' });
   } catch (err) {
     console.error('Send to kitchen error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 };
 
-// PATCH /api/orders/:id  — update status (kitchen uses this)
+// PATCH /api/orders/:id — update status
 const updateOrderStatus = async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  const allowed = ['created', 'to_cook', 'preparing', 'completed', 'paid'];
+  const allowed = ['created', 'to_cook', 'preparing', 'completed', 'paid', 'cancelled'];
   if (!allowed.includes(status)) {
     return res.status(400).json({ error: 'Invalid status value' });
   }
 
   try {
+    // if cancelling — free the table first
+    if (status === 'cancelled') {
+      // find which table this order belongs to
+      const orderResult = await pool.query(
+        'SELECT table_id FROM orders WHERE order_id = $1',
+        [id]
+      );
+
+      if (orderResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      const tableId = orderResult.rows[0].table_id;
+
+      // free the table
+      await pool.query(
+        'UPDATE floor_tables SET status = $1 WHERE id = $2',
+        ['available', tableId]
+      );
+    }
+
+    // update order status
     const result = await pool.query(
       'UPDATE orders SET status = $1 WHERE order_id = $2 RETURNING *',
       [status, id]
