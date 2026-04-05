@@ -85,4 +85,29 @@ const login = async (req, res) => {
   }
 };
 
-module.exports = { signup, login };
+const googleCallback = (req, res) => {
+  try {
+    const token = jwt.sign(
+      { userId: req.user.id, email: req.user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '8h' }
+    );
+
+    const user = JSON.stringify({
+      id: req.user.id,
+      name: req.user.name,
+      email: req.user.email,
+    });
+
+    // redirect to frontend with token and user in query params
+    const frontendURL = process.env.FRONTEND_URL || 'http://localhost:5173';
+    res.redirect(
+      `${frontendURL}/auth/google/callback?token=${encodeURIComponent(token)}&user=${encodeURIComponent(user)}`
+    );
+  } catch (err) {
+    console.error('Google callback error:', err);
+    res.redirect('http://localhost:5173/login?error=google_auth_failed');
+  }
+};
+
+module.exports = { signup, login, googleCallback };

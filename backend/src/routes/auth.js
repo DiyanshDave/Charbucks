@@ -1,10 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const jwt = require('jsonwebtoken');
 const passport = require('../config/passport');
-const { signup, login } = require('../controllers/authController');
+const { signup, login, googleCallback } = require('../controllers/authController');
 
-// existing routes
+// email/password routes
 router.post('/signup', signup);
 router.post('/login', login);
 
@@ -18,29 +17,11 @@ router.get(
 router.get(
   '/google/callback',
   passport.authenticate('google', { failureRedirect: '/api/auth/google/failed' }),
-  (req, res) => {
-    // generate JWT for the google user
-    const token = jwt.sign(
-      { userId: req.user.id, email: req.user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: '8h' }
-    );
-
-    // send token back to frontend
-    res.json({
-      message: 'Google login successful',
-      token,
-      user: {
-        id: req.user.id,
-        name: req.user.name,
-        email: req.user.email,
-      },
-    });
-  }
+  googleCallback
 );
 
 router.get('/google/failed', (req, res) => {
-  res.status(401).json({ error: 'Google authentication failed' });
+  res.redirect('http://localhost:5173/login?error=google_auth_failed');
 });
 
 module.exports = router;
